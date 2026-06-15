@@ -1,0 +1,18 @@
+# Version control ignores for ScriptFlow
+
+# Backend files
+backend/.venv/
+backend/__pycache__/
+backend/serviceAccountKey.json
+backend/*.pyc
+
+# Frontend files
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
