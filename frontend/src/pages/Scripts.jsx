@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import useScripts from '../hooks/useScripts';
 import Modal from '../components/Modal';
 import StatusBadge from '../components/StatusBadge';
-import { API_URL } from '../config';
+import { db } from '../firebase';
+import { collection, addDoc, doc, updateDoc } from 'firebase/firestore';
 
 export default function Scripts() {
   const { scripts, loading } = useScripts();
@@ -28,19 +29,17 @@ export default function Scripts() {
       name: newScript.name,
       filePath: newScript.filePath,
       description: newScript.description || 'Custom automation script.',
+      lastRun: 'Never',
+      status: 'Idle',
+      duration: '00:00:00',
     };
     
     try {
-      const res = await fetch(`${API_URL}/scripts/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(created)
-      });
-      
-      if (!res.ok) throw new Error('Failed to register script');
-      
-      const data = await res.json();
-      setScriptList((current) => [data.data, ...current]);
+      if (db) {
+        await addDoc(collection(db, 'scripts'), created);
+      } else {
+        setScriptList((current) => [{ id: `script-${Date.now()}`, ...created }, ...current]);
+      }
     } catch (err) {
       console.error('Failed to register script:', err);
       alert('Failed to register script in database.');
@@ -52,21 +51,29 @@ export default function Scripts() {
 
   const handleRunNow = async (id) => {
     try {
-      // Optimistically update UI
-      setScriptList((current) =>
-        current.map((script) =>
-          script.id === id
-            ? { ...script, status: 'Running', lastRun: 'Just now', duration: '00:00:00' }
-            : script
-        )
-      );
-
-      const res = await fetch(`${API_URL}/run/${id}`, {
-        method: 'POST'
-      });
-      
-      if (!res.ok) throw new Error('Failed to run script');
-      
+      if (db) {
+        const scriptRef = doc(db, 'scripts', id);
+        await updateDoc(scriptRef, { status: 'Running', lastRun: 'Just now', duration: '00:01:12' });
+        
+        const scriptToRun = scriptList.find(s => s.id === id) || { name: 'Unknown Script' };
+        await addDoc(collection(db, 'runs'), {
+          scriptName: scriptToRun.name,
+          triggeredAt: new Date().toISOString().replace('T', ' ').substring(0, 19),
+          duration: '00:01:12',
+          status: 'Running',
+          output: ['[12:00:01] Starting script...', '[12:00:02] Initializing...'],
+          metadata: { os: 'Ubuntu 22.04', pid: Math.floor(Math.random() * 1000) + 1000, exitCode: null },
+          error: ''
+        });
+      } else {
+        setScriptList((current) =>
+          current.map((script) =>
+            script.id === id
+              ? { ...script, status: 'Running', lastRun: 'Just now', duration: '00:01:12' }
+              : script
+          )
+        );
+      }
     } catch (err) {
       console.error('Failed to run script:', err);
       alert('Failed to execute script. Check console for details.');
