@@ -1,32 +1,7 @@
 import { collection, addDoc, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
-const seedScripts = [
-  {
-    name: 'Backup Processor',
-    filePath: 'backup_processor.py',
-    description: 'Creates encrypted archive snapshots and transfers them to remote storage.',
-    lastRun: '09:12:23',
-    status: 'Idle',
-    duration: '00:02:14',
-  },
-  {
-    name: 'Sales Report',
-    filePath: 'sales_report.py',
-    description: 'Compiles today\'s sales data into a detailed performance summary.',
-    lastRun: '18:40:07',
-    status: 'Idle',
-    duration: '00:01:02',
-  },
-  {
-    name: 'Email Digest',
-    filePath: 'email_digest.py',
-    description: 'Assembles and delivers the daily customer digest email.',
-    lastRun: '12:23:58',
-    status: 'Idle',
-    duration: '00:00:54',
-  },
-];
+
 
 const seedRuns = [
   {
@@ -67,19 +42,13 @@ const seedSchedules = [
 export async function seedFirestore() {
   if (!db) throw new Error('Firestore not initialised');
 
-  const results = { scripts: 0, runs: 0, schedules: 0 };
+  const results = { runs: 0, schedules: 0 };
 
   // Only seed if collections are empty
-  const [scriptsSnap, runsSnap, schedulesSnap] = await Promise.all([
-    getDocs(collection(db, 'scripts')),
+  const [runsSnap, schedulesSnap] = await Promise.all([
     getDocs(collection(db, 'runs')),
     getDocs(collection(db, 'schedules')),
   ]);
-
-  if (scriptsSnap.empty) {
-    await Promise.all(seedScripts.map((s) => addDoc(collection(db, 'scripts'), s)));
-    results.scripts = seedScripts.length;
-  }
 
   if (runsSnap.empty) {
     await Promise.all(seedRuns.map((r) => addDoc(collection(db, 'runs'), r)));

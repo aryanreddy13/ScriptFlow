@@ -21,11 +21,11 @@ export default function Dashboard() {
     setSeeding(true);
     try {
       const result = await seedFirestore();
-      const total = result.scripts + result.runs + result.schedules;
+      const total = (result.runs || 0) + (result.schedules || 0);
       if (total === 0) {
         setSeedDone('Collections already have data — nothing to seed.');
       } else {
-        setSeedDone(`Seeded: ${result.scripts} scripts, ${result.runs} runs, ${result.schedules} schedules.`);
+        setSeedDone(`Seeded: ${result.runs} runs, ${result.schedules} schedules.`);
       }
     } catch (err) {
       setSeedDone(`Error: ${err.message}`);

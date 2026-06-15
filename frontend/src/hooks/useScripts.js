@@ -1,62 +1,49 @@
 import { useEffect, useState } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
-
-const fallbackScripts = [
-  {
-    id: 'script-001',
-    name: 'Backup Processor',
-    filePath: 'backup_processor.py',
-    description: 'Creates encrypted archive snapshots and transfers them to remote storage.',
-    lastRun: '09:12:23',
-    status: 'Running',
-    duration: '00:02:14',
-  },
-  {
-    id: 'script-002',
-    name: 'Sales Report',
-    filePath: 'sales_report.py',
-    description: 'Compiles today’s sales data into a detailed performance summary.',
-    lastRun: '18:40:07',
-    status: 'Idle',
-    duration: '00:00:00',
-  },
-  {
-    id: 'script-003',
-    name: 'Email Digest',
-    filePath: 'email_digest.py',
-    description: 'Assembles and delivers the daily customer digest email.',
-    lastRun: '12:23:58',
-    status: 'Idle',
-    duration: '00:00:00',
-  },
-];
+import { API_URL } from '../config';
 
 export default function useScripts() {
   const [scripts, setScripts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!db) {
-      setScripts(fallbackScripts);
-      setLoading(false);
-      return;
-    }
+    let isMounted = true;
 
-    const unsubscribe = onSnapshot(
-      collection(db, 'scripts'),
-      (snapshot) => {
-        setScripts(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-        setLoading(false);
-      },
-      () => {
-        setScripts(fallbackScripts);
-        setLoading(false);
+    const fetchScripts = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch(`${API_URL}/scripts`);
+        
+        if (!response.ok) {
+          throw new Error(`Error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        if (isMounted) {
+          setScripts(data);
+        }
+      } catch (err) {
+        if (isMounted) {
+          setError(err.message);
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
-    );
+    };
 
-    return () => unsubscribe();
+    fetchScripts();
+    
+    // Set up polling for script states since we no longer have onSnapshot for realtime updates
+    const intervalId = setInterval(fetchScripts, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
   }, []);
 
-  return { scripts, loading };
+  return { scripts, loading, error };
 }

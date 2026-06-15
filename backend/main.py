@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from firebase import db
-from runner import run_script
+from runner import run_script, SCRIPT_STATES
 from scheduler import load_schedules, scheduler
 
 @asynccontextmanager
@@ -58,7 +58,7 @@ def trigger_script_run(script_name: str, background_tasks: BackgroundTasks):
 
 @app.get("/scripts")
 def list_available_scripts():
-    """Retrieve list of python script filenames located in the scripts subfolder."""
+    """Retrieve list of python script filenames located in the scripts subfolder, as structured objects."""
     backend_dir = os.path.dirname(os.path.abspath(__file__))
     scripts_dir = os.path.join(backend_dir, "scripts")
     
@@ -66,9 +66,29 @@ def list_available_scripts():
         return []
         
     try:
-        # Find all python script filenames
-        files = [f for f in os.listdir(scripts_dir) if f.endswith(".py")]
-        return files
+        scripts_data = []
+        for f in os.listdir(scripts_dir):
+            if f.endswith(".py"):
+                # Clean up file name to generate a sensible display name
+                display_name = f.replace("_", " ").replace(".py", "").title()
+                script_id = f.replace(".py", "")
+                
+                # Fetch state from in-memory dictionary or use defaults
+                state = SCRIPT_STATES.get(script_id, {})
+                status = state.get("status", "Idle")
+                last_run = state.get("lastRun", "Never")
+                duration = state.get("duration", "00:00:00")
+                
+                scripts_data.append({
+                    "id": script_id,
+                    "name": display_name,
+                    "filePath": f,
+                    "description": "Custom automation script.",
+                    "status": status,
+                    "lastRun": last_run,
+                    "duration": duration
+                })
+        return scripts_data
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -77,38 +97,42 @@ def list_available_scripts():
 
 @app.post("/scripts/register")
 def register_new_script(req: ScriptRegisterRequest):
-    """Add a new script configuration document to the Firestore scripts collection."""
-    if db is None:
-        raise HTTPException(
-            status_code=500,
-            detail="Firestore database client not initialized. Ensure serviceAccountKey.json is configured."
-        )
-        
+    """Create a new script physical file in the backend/scripts collection."""
     # Auto-generate a standardized file name from display name
     clean_name = "".join(c for c in req.name if c.isalnum() or c.isspace()).strip()
     file_path = clean_name.lower().replace(" ", "_") + ".py"
     
-    # Payload schema
-    doc_payload = {
-        "name": req.name,
-        "filePath": file_path,
-        "description": req.description,
-        "lastStatus": "idle",
-        "status": "Idle",  # Capitalized to match frontend badge states
-        "lastRun": None,
-        "duration": "00:00:00"  # Format to prevent front-end renderer exceptions
-    }
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    scripts_dir = os.path.join(backend_dir, "scripts")
+    os.makedirs(scripts_dir, exist_ok=True)
     
+    full_path = os.path.join(scripts_dir, file_path)
+    
+    if os.path.exists(full_path):
+        raise HTTPException(status_code=400, detail="Script file already exists.")
+        
     try:
-        # Write script document in Firestore
-        _, doc_ref = db.collection("scripts").add(doc_payload)
+        with open(full_path, "w", encoding="utf-8") as f:
+            f.write(f'# {req.name}\n# {req.description}\n\nprint("Executing {req.name}...")\n')
+            
+        doc_payload = {
+            "id": file_path.replace(".py", ""),
+            "name": req.name,
+            "filePath": file_path,
+            "description": req.description,
+            "lastStatus": "idle",
+            "status": "Idle",
+            "lastRun": "Never",
+            "duration": "00:00:00"
+        }
+        
         return {
             "status": "registered",
-            "id": doc_ref.id,
+            "id": doc_payload["id"],
             "data": doc_payload
         }
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to write script payload configuration to Firestore: {e}"
+            detail=f"Failed to create script file: {e}"
         )
